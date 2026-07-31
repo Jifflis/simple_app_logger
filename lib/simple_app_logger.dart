@@ -37,10 +37,11 @@ class SimpleAppLogger {
   }
 
   static Future<void> init({required String key}) async {
+    await PrefsUtil.init();
     apiKey = key;
 
-    isInit = true;
     await HttpUtil.init(apiKey: apiKey);
+    isInit = true;
 
     _postInitialVariables();
   }
