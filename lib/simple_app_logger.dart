@@ -1,7 +1,7 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:simple_app_logger/service/http_util.dart';
 import 'package:simple_app_logger/util/date_util.dart';
 import 'package:simple_app_logger/util/device_info.dart';
@@ -23,17 +23,16 @@ class SimpleAppLogger {
   }
 
   static String _getPlatform() {
-    return Platform.isAndroid
-        ? 'Android'
-        : Platform.isIOS
-        ? 'iOS'
-        : Platform.isMacOS
-        ? 'macOS'
-        : Platform.isWindows
-        ? 'Windows'
-        : Platform.isLinux
-        ? 'Linux'
-        : 'Unknown';
+    if (kIsWeb) return 'Web';
+
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.android => 'Android',
+      TargetPlatform.iOS => 'iOS',
+      TargetPlatform.macOS => 'macOS',
+      TargetPlatform.windows => 'Windows',
+      TargetPlatform.linux => 'Linux',
+      TargetPlatform.fuchsia => 'Fuchsia',
+    };
   }
 
   static Future<void> init({required String key}) async {

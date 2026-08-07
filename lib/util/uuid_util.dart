@@ -17,5 +17,4 @@ class UUIDGenerator {
   String generate() {
     return _uuid.v4();
   }
-
 }

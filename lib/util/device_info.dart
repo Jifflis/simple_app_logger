@@ -1,7 +1,5 @@
-import 'dart:io';
-
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
 
 class DeviceHelper {
   static final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
@@ -9,21 +7,27 @@ class DeviceHelper {
   /// Returns a unique device ID depending on the platform.
   static Future<String?> getDeviceId() async {
     try {
-      if (Platform.isAndroid) {
+      if (kIsWeb) {
+        // Browsers intentionally do not expose a stable device identifier.
+        // The logger's persisted instance ID identifies this installation.
+        return null;
+      }
+
+      if (defaultTargetPlatform == TargetPlatform.android) {
         final androidInfo = await _deviceInfo.androidInfo;
-        return androidInfo.id; // Or: androidInfo.androidId (deprecated on some devices)
-      } else if (Platform.isIOS) {
+        return androidInfo.id;
+      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
         final iosInfo = await _deviceInfo.iosInfo;
         return iosInfo.identifierForVendor;
-      } else if (Platform.isMacOS) {
+      } else if (defaultTargetPlatform == TargetPlatform.macOS) {
         final macInfo = await _deviceInfo.macOsInfo;
-        return macInfo.systemGUID; // unique to each Mac system
-      } else if (Platform.isWindows) {
+        return macInfo.systemGUID;
+      } else if (defaultTargetPlatform == TargetPlatform.windows) {
         final winInfo = await _deviceInfo.windowsInfo;
-        return winInfo.deviceId; // stable Windows device identifier
-      } else if (Platform.isLinux) {
+        return winInfo.deviceId;
+      } else if (defaultTargetPlatform == TargetPlatform.linux) {
         final linuxInfo = await _deviceInfo.linuxInfo;
-        return linuxInfo.machineId; // may be null if restricted
+        return linuxInfo.machineId;
       } else {
         return 'unknown-platform';
       }
@@ -34,45 +38,51 @@ class DeviceHelper {
   }
 
   static Future<String> getDeviceName() async {
-    final deviceInfo = DeviceInfoPlugin();
+    if (kIsWeb) {
+      final info = await _deviceInfo.webBrowserInfo;
+      return info.browserName.name;
+    }
 
-    if (Platform.isAndroid) {
-      final info = await deviceInfo.androidInfo;
-      return "${info.manufacturer} ${info.name}";
-    } else if (Platform.isIOS) {
-      final info = await deviceInfo.iosInfo;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final info = await _deviceInfo.androidInfo;
+      return '${info.manufacturer} ${info.name}';
+    } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+      final info = await _deviceInfo.iosInfo;
       return info.name;
-    } else if (Platform.isMacOS) {
-      final info = await deviceInfo.macOsInfo;
+    } else if (defaultTargetPlatform == TargetPlatform.macOS) {
+      final info = await _deviceInfo.macOsInfo;
       return info.computerName;
-    } else if (Platform.isWindows) {
-      final info = await deviceInfo.windowsInfo;
-      return info.computerName ;
+    } else if (defaultTargetPlatform == TargetPlatform.windows) {
+      final info = await _deviceInfo.windowsInfo;
+      return info.computerName;
     } else {
-      return "Unknown Device";
+      return 'Unknown Device';
     }
   }
 
   static Future<String> getDeviceModel() async {
-    final deviceInfo = DeviceInfoPlugin();
+    if (kIsWeb) {
+      final info = await _deviceInfo.webBrowserInfo;
+      return info.platform ?? info.userAgent ?? 'Unknown Browser';
+    }
 
-    if (Platform.isAndroid) {
-      final info = await deviceInfo.androidInfo;
-      return info.model ;
-    } else if (Platform.isIOS) {
-      final info = await deviceInfo.iosInfo;
-      return info.utsname.machine;
-    } else if (Platform.isMacOS) {
-      final info = await deviceInfo.macOsInfo;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final info = await _deviceInfo.androidInfo;
       return info.model;
-    } else if (Platform.isWindows) {
-      final info = await deviceInfo.windowsInfo;
+    } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+      final info = await _deviceInfo.iosInfo;
+      return info.utsname.machine;
+    } else if (defaultTargetPlatform == TargetPlatform.macOS) {
+      final info = await _deviceInfo.macOsInfo;
+      return info.model;
+    } else if (defaultTargetPlatform == TargetPlatform.windows) {
+      final info = await _deviceInfo.windowsInfo;
       return info.computerName;
-    } else if (Platform.isLinux) {
-      final info = await deviceInfo.linuxInfo;
+    } else if (defaultTargetPlatform == TargetPlatform.linux) {
+      final info = await _deviceInfo.linuxInfo;
       return info.prettyName;
     } else {
-      return "Unknown Device";
+      return 'Unknown Device';
     }
   }
 }

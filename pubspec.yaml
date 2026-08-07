@@ -3,6 +3,14 @@ description: "A new Flutter package project."
 version: 0.0.1
 homepage:
 
+platforms:
+  android:
+  ios:
+  linux:
+  macos:
+  web:
+  windows:
+
 environment:
   sdk: ^3.9.2
   flutter: ">=1.17.0"

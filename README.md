@@ -23,6 +23,9 @@ TODO: List what your package can do. Maybe include images, gifs, or videos.
 The service URL is configured internally. Applications using this package only
 need to provide their API key during initialization.
 
+Android, iOS, Linux, macOS, web, and Windows are supported. On web, failed
+requests are persisted in IndexedDB and retried when connectivity returns.
+
 ## Usage
 
 TODO: Include short and useful examples for package users. Add longer examples

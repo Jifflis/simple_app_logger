@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
-
 class PrefsUtil {
   PrefsUtil._internal();
 
@@ -21,7 +20,10 @@ class PrefsUtil {
     return jsonDecode(jsonString);
   }
 
-  Future<void> saveJsonData({required String key, required Map<String, dynamic> data}) async {
+  Future<void> saveJsonData({
+    required String key,
+    required Map<String, dynamic> data,
+  }) async {
     final jsonString = jsonEncode(data);
     await prefs.setString(key, jsonString);
   }
@@ -29,5 +31,4 @@ class PrefsUtil {
   Future<void> remove(String key) async {
     prefs.remove(key);
   }
-
 }

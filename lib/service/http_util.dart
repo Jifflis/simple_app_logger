@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -40,8 +41,13 @@ class HttpUtil {
   }
 
   static Future<void> _initializeHive() async {
-    final dir = await getApplicationDocumentsDirectory();
-    Hive.init(dir.path);
+    if (kIsWeb) {
+      // Hive uses IndexedDB when no filesystem path is supplied in a browser.
+      Hive.init(null);
+    } else {
+      final dir = await getApplicationDocumentsDirectory();
+      Hive.init(dir.path);
+    }
     if (!Hive.isAdapterRegistered(0)) {
       Hive.registerAdapter(FailedRequestAdapter());
     }
