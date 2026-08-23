@@ -103,6 +103,7 @@ await SimpleAppLogger.init(
   maxQueuedLogs: 1000,
   appVersion: '2.4.1',
   useInstallationAuth: true,
+  captureUnhandledError: true,
 );
 ```
 
@@ -114,6 +115,7 @@ await SimpleAppLogger.init(
 | `maxQueuedLogs` | `1000` | Maximum locally queued logs. Must be at least `batchSize`. |
 | `appVersion` | Detected automatically | Version used for installation registration and `X-App-Version`. |
 | `useInstallationAuth` | `true` | Enables installation tokens on supported platforms. |
+| `captureUnhandledError` | `false` | Captures unhandled Flutter and root-isolate errors. |
 
 Set `appVersion` explicitly when tests, custom build systems, or the backend
 version allowlist require a specific value. Valid backend versions contain
@@ -141,6 +143,41 @@ the UTC event time, message, level, and optional tag.
 Awaiting a logging method confirms that the entry has been handled by the local
 logger. It does not mean the backend has already received it. Use `flush()`
 when delivery must be attempted immediately.
+
+### Unhandled errors
+
+Enable automatic capture for Flutter framework errors and uncaught root-isolate
+errors:
+
+```dart
+await SimpleAppLogger.init(
+  key: 'your-project-api-key',
+  captureUnhandledError: true,
+);
+```
+
+Automatically captured events use the normalized tags `unhandled_error` and
+`uncaught_crash`. Error zones must wrap `main()`, so forward zone errors to the
+logger explicitly with the `zone_crash` tag:
+
+```dart
+void main() {
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    await SimpleAppLogger.init(
+      key: 'your-project-api-key',
+      captureUnhandledError: true,
+    );
+    runApp(const MyApp());
+  }, (error, stack) {
+    SimpleAppLogger.recordUnhandledError(error, stack);
+  });
+}
+```
+
+The SDK forwards errors to handlers that were installed before initialization.
+Native process crashes and forced termination cannot be captured reliably by
+Dart error handlers.
 
 ## Batching and offline behavior
 
@@ -234,17 +271,14 @@ is required.
 
 ### macOS
 
-Enable Keychain Sharing in the consuming application. Add this to both
-`macos/Runner/DebugProfile.entitlements` and
-`macos/Runner/Release.entitlements`:
+No Keychain Sharing entitlement is required with the default configuration.
+Installation credentials are stored in the app's private Keychain. Only enable
+Keychain Sharing when your application explicitly configures a shared Keychain
+access group; doing so requires signing with an Apple development or
+distribution certificate.
 
-```xml
-<key>keychain-access-groups</key>
-<array/>
-```
-
-If this capability is missing, the current process can use an in-memory token,
-but it may register again after restart because secure persistence can fail.
+If Keychain persistence is unavailable at runtime, the current process can use
+an in-memory token, but it may register again after restart.
 
 ### Windows
 
@@ -411,8 +445,10 @@ administration; the SDK intentionally does not bypass revocation.
 
 ### macOS repeatedly registers after restart
 
-Verify Keychain Sharing in both debug and release entitlement files, then
-rebuild the host application.
+Verify that Keychain access is available to the application and that the app's
+bundle identifier has not changed. If the application explicitly uses a shared
+Keychain access group, verify its signing certificate and Keychain Sharing
+entitlement, then rebuild the host application.
 
 ### Batches are rejected
 

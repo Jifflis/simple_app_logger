@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 
+import 'api_diagnostics.dart';
+
 enum InstallationAuthState {
   uninitialized,
   authenticating,
@@ -51,8 +53,10 @@ class InstallationAuthManager {
     required this.useInstallationAuth,
     InstallationTokenStore? tokenStore,
     http.Client? client,
+    void Function(String message)? apiLog,
   }) : _storage = tokenStore ?? SecureInstallationTokenStore(),
-       _client = client ?? http.Client();
+       _client = client ?? http.Client(),
+       _apiLog = apiLog;
 
   static const _tokenKey = 'simple_logger_installation_token';
   static const _expiryKey = 'simple_logger_installation_token_expiry';
@@ -75,6 +79,7 @@ class InstallationAuthManager {
   final bool useInstallationAuth;
   final InstallationTokenStore _storage;
   final http.Client _client;
+  final void Function(String message)? _apiLog;
 
   String? _token;
   DateTime? _expiresAt;
@@ -173,24 +178,33 @@ class InstallationAuthManager {
   }
 
   Future<bool> _refresh() async {
+    final url = '$baseUrl/api/installations/refresh';
+    final headers = {
+      'Content-Type': 'application/json',
+      'Authorization': 'Installation $_token',
+      'X-App-Version': appVersion,
+    };
     try {
+      _emitApiLog(formatApiRequest(method: 'POST', url: url, headers: headers));
       final response = await _client
-          .post(
-            Uri.parse('$baseUrl/api/installations/refresh'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Installation $_token',
-              'X-App-Version': appVersion,
-            },
-          )
+          .post(Uri.parse(url), headers: headers)
           .timeout(_requestTimeout);
+      _emitApiLog(
+        formatApiResponse(
+          method: 'POST',
+          url: url,
+          statusCode: response.statusCode,
+          body: response.body,
+        ),
+      );
       if (response.statusCode >= 200 && response.statusCode < 300) {
         await _saveTokenResponse(response);
         return true;
       }
       if (response.statusCode == 401) await _clearToken();
       return false;
-    } catch (_) {
+    } catch (error) {
+      _emitApiLog('[API] POST $url -> failed: $error');
       if (_hasUnexpiredToken) {
         state = InstallationAuthState.authenticated;
         return true;
@@ -200,18 +214,42 @@ class InstallationAuthManager {
   }
 
   Future<void> _register() async {
-    final response = await _client
-        .post(
-          Uri.parse('$baseUrl/api/installations/register'),
-          headers: _apiKeyHeaders,
-          body: jsonEncode({
-            'installation_id': installationId,
-            'platform': platform,
-            'app_version': appVersion,
-            'scopes': _scopes,
-          }),
-        )
-        .timeout(_requestTimeout);
+    final url = '$baseUrl/api/installations/register';
+    final payload = {
+      'installation_id': installationId,
+      'platform': platform,
+      'app_version': appVersion,
+      'scopes': _scopes,
+    };
+    _emitApiLog(
+      formatApiRequest(
+        method: 'POST',
+        url: url,
+        headers: _apiKeyHeaders,
+        payload: payload,
+      ),
+    );
+    late final http.Response response;
+    try {
+      response = await _client
+          .post(
+            Uri.parse(url),
+            headers: _apiKeyHeaders,
+            body: jsonEncode(payload),
+          )
+          .timeout(_requestTimeout);
+      _emitApiLog(
+        formatApiResponse(
+          method: 'POST',
+          url: url,
+          statusCode: response.statusCode,
+          body: response.body,
+        ),
+      );
+    } catch (error) {
+      _emitApiLog('[API] POST $url -> failed: $error');
+      rethrow;
+    }
     if (response.statusCode == 409) {
       await _clearToken();
       throw const InstallationRevokedException();
@@ -269,4 +307,12 @@ class InstallationAuthManager {
   }
 
   void dispose() => _client.close();
+
+  void _emitApiLog(String message) {
+    try {
+      _apiLog?.call(message);
+    } catch (_) {
+      // Diagnostics must never affect authentication.
+    }
+  }
 }

@@ -14,7 +14,8 @@ import 'package:simple_app_logger/util/uuid_util.dart';
 class SimpleAppLogger {
   SimpleAppLogger._();
 
-  static const String _apiBaseUrl = 'https://api.id-makers.com';
+  static const String _apiBaseUrl =
+      'http://127.0.0.1:5001'; //token alk_d78415cc_frnGe72CsJH_Ww5NFwPtQUmoYsWDxCUtPzjfdGwybOE
 
   static late String apiKey;
 
@@ -24,6 +25,10 @@ class SimpleAppLogger {
   static Future<void>? _recovery;
   static bool _deviceInitialized = false;
   static String _appVersion = '';
+  static FlutterExceptionHandler? _previousFlutterErrorHandler;
+  static bool Function(Object error, StackTrace stack)?
+  _previousPlatformErrorHandler;
+  static bool _capturesUnhandledErrors = false;
 
   static String _endpoint(String path) {
     final normalizedPath = path.startsWith('/') ? path : '/$path';
@@ -50,6 +55,8 @@ class SimpleAppLogger {
     int maxQueuedLogs = 1000,
     String? appVersion,
     bool useInstallationAuth = true,
+    bool captureUnhandledError = false,
+    void Function(String message)? apiLog,
   }) async {
     await PrefsUtil.init();
     apiKey = key;
@@ -72,6 +79,7 @@ class SimpleAppLogger {
       platform: platform,
       appVersion: resolvedAppVersion,
       useInstallationAuth: supportsInstallationAuth,
+      apiLog: apiLog,
     );
     await authManager.initialize();
 
@@ -83,9 +91,11 @@ class SimpleAppLogger {
       logBatchUrl: _endpoint('/api/logs/batch'),
       beforeLogFlush: _ensureDeliveryReady,
       onLogDeviceMissing: () => _deviceInitialized = false,
+      apiLog: apiLog,
     );
     isInit = true;
     _deviceInitialized = false;
+    _configureUnhandledErrorCapture(captureUnhandledError);
 
     await _connectivitySubscription?.cancel();
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
@@ -246,6 +256,13 @@ class SimpleAppLogger {
   static Future<void> error(String message, {String tag = ''}) =>
       _log('error', message, tag: tag);
 
+  /// Records an error caught by an application-owned error zone.
+  static Future<void> recordUnhandledError(
+    Object error,
+    StackTrace stack, {
+    String tag = 'zone_crash',
+  }) => _log('error', '$error\n$stack', tag: tag);
+
   static Future<void> warning(String message, {String tag = ''}) =>
       _log('warning', message, tag: tag);
 
@@ -258,9 +275,49 @@ class SimpleAppLogger {
   /// Flushes queued logs and stops the batching timer.
   static Future<void> dispose() async {
     if (!isInit) return;
+    _removeUnhandledErrorCapture();
     await _connectivitySubscription?.cancel();
     _connectivitySubscription = null;
     await HttpUtil.dispose();
     isInit = false;
+  }
+
+  static void _configureUnhandledErrorCapture(bool enabled) {
+    _removeUnhandledErrorCapture();
+    if (!enabled) return;
+
+    _capturesUnhandledErrors = true;
+    _previousFlutterErrorHandler = FlutterError.onError;
+    FlutterError.onError = (details) {
+      unawaited(
+        recordUnhandledError(
+          details.exception,
+          details.stack ?? StackTrace.current,
+          tag: 'unhandled_error',
+        ),
+      );
+      final previousHandler = _previousFlutterErrorHandler;
+      if (previousHandler != null) {
+        previousHandler(details);
+      } else {
+        FlutterError.presentError(details);
+      }
+    };
+
+    final dispatcher = PlatformDispatcher.instance;
+    _previousPlatformErrorHandler = dispatcher.onError;
+    dispatcher.onError = (error, stack) {
+      unawaited(recordUnhandledError(error, stack, tag: 'uncaught_crash'));
+      return _previousPlatformErrorHandler?.call(error, stack) ?? false;
+    };
+  }
+
+  static void _removeUnhandledErrorCapture() {
+    if (!_capturesUnhandledErrors) return;
+    FlutterError.onError = _previousFlutterErrorHandler;
+    PlatformDispatcher.instance.onError = _previousPlatformErrorHandler;
+    _previousFlutterErrorHandler = null;
+    _previousPlatformErrorHandler = null;
+    _capturesUnhandledErrors = false;
   }
 }

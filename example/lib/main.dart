@@ -69,6 +69,8 @@ class _LoggerExamplePageState extends State<LoggerExamplePage>
         batchSize: 10,
         flushInterval: const Duration(seconds: 10),
         maxQueuedLogs: 1000,
+        captureUnhandledError: true,
+        apiLog: (message) => debugPrint(message),
       );
       if (!mounted) return;
       setState(() {

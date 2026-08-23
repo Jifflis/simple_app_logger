@@ -14,5 +14,6 @@ The sample uses a batch size of 10, a 10-second flush interval, and a maximum
 queue of 1,000 logs. The key must have the scopes documented in the package
 README.
 
-On macOS, the example includes Keychain Sharing and outbound-network
-entitlements in both debug and release configurations.
+On macOS, the example uses the app's private Keychain and includes the
+outbound-network entitlement in both debug and release configurations. A
+development signing certificate is not required for local debug builds.

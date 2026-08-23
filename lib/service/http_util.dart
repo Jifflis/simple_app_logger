@@ -6,6 +6,7 @@ import 'package:hive_ce/hive.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import '../collections/failed_request.dart';
+import 'api_diagnostics.dart';
 import 'installation_auth.dart';
 
 class HttpUtil {
@@ -24,6 +25,7 @@ class HttpUtil {
   static InstallationAuthManager? _authManager;
   static Future<bool> Function()? _beforeLogFlush;
   static void Function()? _onLogDeviceMissing;
+  static void Function(String message)? _apiLog;
   static const int _maxBackoffSeconds = 60; // Max exponential backoff
   static const int _maxSupportedLogBatchSize = 50;
   static const Duration _requestTimeout = Duration(seconds: 15);
@@ -53,6 +55,7 @@ class HttpUtil {
     String? logBatchUrl,
     Future<bool> Function()? beforeLogFlush,
     void Function()? onLogDeviceMissing,
+    void Function(String message)? apiLog,
   }) async {
     if (logBatchSize <= 0) {
       throw ArgumentError.value(
@@ -86,6 +89,7 @@ class HttpUtil {
     _authManager = authManager;
     _beforeLogFlush = beforeLogFlush;
     _onLogDeviceMissing = onLogDeviceMissing;
+    _apiLog = apiLog;
     _logBatchSize = logBatchSize;
     _logFlushInterval = logFlushInterval;
     _maxQueuedLogs = maxQueuedLogs;
@@ -268,17 +272,40 @@ class HttpUtil {
       final headers = await authManager.headers();
       final uri = Uri.parse(url);
       final encodedBody = body == null ? null : jsonEncode(body);
-      final response = switch (method) {
-        'GET' => await http.get(uri, headers: headers).timeout(_requestTimeout),
-        'PUT' =>
-          await http
-              .put(uri, headers: headers, body: encodedBody)
-              .timeout(_requestTimeout),
-        _ =>
-          await http
-              .post(uri, headers: headers, body: encodedBody)
-              .timeout(_requestTimeout),
-      };
+      _emitApiLog(
+        formatApiRequest(
+          method: method,
+          url: url,
+          headers: headers,
+          payload: body,
+        ),
+      );
+      late final http.Response response;
+      try {
+        response = switch (method) {
+          'GET' =>
+            await http.get(uri, headers: headers).timeout(_requestTimeout),
+          'PUT' =>
+            await http
+                .put(uri, headers: headers, body: encodedBody)
+                .timeout(_requestTimeout),
+          _ =>
+            await http
+                .post(uri, headers: headers, body: encodedBody)
+                .timeout(_requestTimeout),
+        };
+        _emitApiLog(
+          formatApiResponse(
+            method: method,
+            url: url,
+            statusCode: response.statusCode,
+            body: response.body,
+          ),
+        );
+      } catch (error) {
+        _emitApiLog('[API] $method $url -> failed: $error');
+        rethrow;
+      }
       if (response.statusCode != 401 ||
           !authManager.usesInstallationToken ||
           attempt > 0) {
@@ -417,6 +444,14 @@ class HttpUtil {
       }
     } finally {
       _isResending = false;
+    }
+  }
+
+  static void _emitApiLog(String message) {
+    try {
+      _apiLog?.call(message);
+    } catch (_) {
+      // Diagnostics must never affect request delivery.
     }
   }
 }
