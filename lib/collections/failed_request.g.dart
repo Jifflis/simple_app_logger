@@ -21,13 +21,14 @@ class FailedRequestAdapter extends TypeAdapter<FailedRequest> {
       headers: (fields[1] as Map).cast<String, String>(),
       body: (fields[2] as Map).cast<String, dynamic>(),
       retryCount: fields[3] == null ? 0 : (fields[3] as num).toInt(),
+      method: fields[4] == null ? 'POST' : fields[4] as String,
     );
   }
 
   @override
   void write(BinaryWriter writer, FailedRequest obj) {
     writer
-      ..writeByte(4)
+      ..writeByte(5)
       ..writeByte(0)
       ..write(obj.url)
       ..writeByte(1)
@@ -35,7 +36,9 @@ class FailedRequestAdapter extends TypeAdapter<FailedRequest> {
       ..writeByte(2)
       ..write(obj.body)
       ..writeByte(3)
-      ..write(obj.retryCount);
+      ..write(obj.retryCount)
+      ..writeByte(4)
+      ..write(obj.method);
   }
 
   @override

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
@@ -5,25 +6,96 @@ import 'package:hive_ce/hive.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import '../collections/failed_request.dart';
+import 'installation_auth.dart';
 
 class HttpUtil {
   static Box<FailedRequest>? _box;
+  static Box<dynamic>? _pendingLogsBox;
   static Future<void>? _initialization;
   static bool _isResending = false;
+  static Future<void>? _logFlush;
+  static Timer? _logFlushTimer;
+  static String? _logBatchUrl;
+  static int _logBatchSize = 25;
+  static int _maxQueuedLogs = 1000;
+  static Duration _logFlushInterval = const Duration(seconds: 5);
+  static int _logFlushFailureCount = 0;
+  static bool _logSchedulingEnabled = true;
+  static InstallationAuthManager? _authManager;
+  static Future<bool> Function()? _beforeLogFlush;
+  static void Function()? _onLogDeviceMissing;
   static const int _maxBackoffSeconds = 60; // Max exponential backoff
+  static const int _maxSupportedLogBatchSize = 50;
+  static const Duration _requestTimeout = Duration(seconds: 15);
 
-  static String apiKey = '';
+  static Future<Map<String, String>> getHeaders() async {
+    final authManager = _authManager;
+    if (authManager == null) {
+      throw StateError('HttpUtil has not been initialized.');
+    }
+    return authManager.headers();
+  }
 
-  static Map<String, String> getHeaders() => {
-    "Content-Type": "application/json",
-    'Authorization': apiKey,
-  };
+  static Future<void> ensureAuthenticated() async {
+    final authManager = _authManager;
+    if (authManager == null) {
+      throw StateError('HttpUtil has not been initialized.');
+    }
+    await authManager.ensureAuthenticated();
+  }
 
   /// Initialize Hive
-  static Future<void> init({required String apiKey}) async {
-    HttpUtil.apiKey = apiKey;
+  static Future<void> init({
+    required InstallationAuthManager authManager,
+    int logBatchSize = 25,
+    Duration logFlushInterval = const Duration(seconds: 5),
+    int maxQueuedLogs = 1000,
+    String? logBatchUrl,
+    Future<bool> Function()? beforeLogFlush,
+    void Function()? onLogDeviceMissing,
+  }) async {
+    if (logBatchSize <= 0) {
+      throw ArgumentError.value(
+        logBatchSize,
+        'logBatchSize',
+        'must be positive',
+      );
+    }
+    if (logBatchSize > _maxSupportedLogBatchSize) {
+      throw ArgumentError.value(
+        logBatchSize,
+        'logBatchSize',
+        'must not exceed $_maxSupportedLogBatchSize',
+      );
+    }
+    if (logFlushInterval <= Duration.zero) {
+      throw ArgumentError.value(
+        logFlushInterval,
+        'logFlushInterval',
+        'must be positive',
+      );
+    }
+    if (maxQueuedLogs < logBatchSize) {
+      throw ArgumentError.value(
+        maxQueuedLogs,
+        'maxQueuedLogs',
+        'must be at least logBatchSize',
+      );
+    }
 
-    if (_box?.isOpen ?? false) return;
+    _authManager = authManager;
+    _beforeLogFlush = beforeLogFlush;
+    _onLogDeviceMissing = onLogDeviceMissing;
+    _logBatchSize = logBatchSize;
+    _logFlushInterval = logFlushInterval;
+    _maxQueuedLogs = maxQueuedLogs;
+    _logBatchUrl = logBatchUrl ?? _logBatchUrl;
+    _logSchedulingEnabled = true;
+
+    if ((_box?.isOpen ?? false) && (_pendingLogsBox?.isOpen ?? false)) {
+      _scheduleLogFlush();
+      return;
+    }
 
     final initializationInProgress = _initialization;
     if (initializationInProgress != null) {
@@ -52,13 +124,176 @@ class HttpUtil {
       Hive.registerAdapter(FailedRequestAdapter());
     }
     _box = await Hive.openBox<FailedRequest>('failed_requests');
+    _pendingLogsBox = await Hive.openBox<dynamic>('pending_logs');
+    _scheduleLogFlush();
+  }
+
+  /// Persist a log and schedule it for batched delivery.
+  static Future<void> enqueueLog({
+    required String url,
+    required Map<String, dynamic> body,
+  }) async {
+    final box = _pendingLogsBox;
+    if (box == null || !box.isOpen) return;
+
+    _logBatchUrl = url;
+    while (box.length >= _maxQueuedLogs && box.isNotEmpty) {
+      await box.delete(box.keys.first);
+    }
+    await box.add(Map<String, dynamic>.from(body));
+
+    if (box.length >= _logBatchSize) {
+      unawaited(flushLogs());
+    } else {
+      _scheduleLogFlush();
+    }
+  }
+
+  static void _scheduleLogFlush([Duration? delay]) {
+    final box = _pendingLogsBox;
+    if (!_logSchedulingEnabled ||
+        box == null ||
+        !box.isOpen ||
+        box.isEmpty ||
+        _logFlushTimer != null) {
+      return;
+    }
+
+    _logFlushTimer = Timer(delay ?? _logFlushInterval, () {
+      _logFlushTimer = null;
+      unawaited(flushLogs());
+    });
+  }
+
+  /// Immediately send all queued logs, one batch at a time.
+  static Future<void> flushLogs() {
+    final inProgress = _logFlush;
+    if (inProgress != null) return inProgress;
+
+    final flush = _flushLogs();
+    _logFlush = flush;
+    return flush.whenComplete(() {
+      _logFlush = null;
+    });
+  }
+
+  static Future<void> _flushLogs() async {
+    _logFlushTimer?.cancel();
+    _logFlushTimer = null;
+
+    final box = _pendingLogsBox;
+    final url = _logBatchUrl;
+    if (box == null || !box.isOpen || box.isEmpty || url == null) return;
+
+    final beforeFlush = _beforeLogFlush;
+    if (beforeFlush != null) {
+      try {
+        if (!await beforeFlush()) {
+          _scheduleLogRetry();
+          return;
+        }
+      } catch (_) {
+        _scheduleLogRetry();
+        return;
+      }
+    }
+
+    while (box.isNotEmpty) {
+      final keys = box.keys.take(_logBatchSize).toList(growable: false);
+      final logs = <Map<String, dynamic>>[];
+      for (final key in keys) {
+        final value = box.get(key);
+        if (value is Map) {
+          logs.add(Map<String, dynamic>.from(value));
+        }
+      }
+
+      if (logs.isEmpty) {
+        await box.deleteAll(keys);
+        continue;
+      }
+
+      try {
+        final response = await _sendRequest(
+          method: 'POST',
+          url: url,
+          body: {'logs': logs},
+        );
+        if (response.statusCode == 404) {
+          _onLogDeviceMissing?.call();
+        }
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          _scheduleLogRetry();
+          return;
+        }
+      } catch (_) {
+        _scheduleLogRetry();
+        return;
+      }
+
+      _logFlushFailureCount = 0;
+      await box.deleteAll(keys);
+    }
+  }
+
+  static void _scheduleLogRetry() {
+    _logFlushFailureCount += 1;
+    final exponent = min(_logFlushFailureCount - 1, 6);
+    final seconds = min(
+      _logFlushInterval.inSeconds * pow(2, exponent).toInt(),
+      _maxBackoffSeconds,
+    );
+    _scheduleLogFlush(Duration(seconds: max(1, seconds)));
+  }
+
+  static Future<void> dispose() async {
+    _logSchedulingEnabled = false;
+    _logFlushTimer?.cancel();
+    _logFlushTimer = null;
+    await flushLogs();
+    _authManager?.dispose();
+  }
+
+  static Future<http.Response> _sendRequest({
+    required String method,
+    required String url,
+    Map<String, dynamic>? body,
+  }) async {
+    final authManager = _authManager;
+    if (authManager == null) {
+      throw StateError('HttpUtil has not been initialized.');
+    }
+
+    for (var attempt = 0; attempt < 2; attempt++) {
+      final headers = await authManager.headers();
+      final uri = Uri.parse(url);
+      final encodedBody = body == null ? null : jsonEncode(body);
+      final response = switch (method) {
+        'GET' => await http.get(uri, headers: headers).timeout(_requestTimeout),
+        'PUT' =>
+          await http
+              .put(uri, headers: headers, body: encodedBody)
+              .timeout(_requestTimeout),
+        _ =>
+          await http
+              .post(uri, headers: headers, body: encodedBody)
+              .timeout(_requestTimeout),
+      };
+      if (response.statusCode != 401 ||
+          !authManager.usesInstallationToken ||
+          attempt > 0) {
+        return response;
+      }
+      await authManager.recoverFromUnauthorized();
+    }
+    throw StateError('Authentication retry did not produce a response.');
   }
 
   /// Send GET request
   ///
   static Future<http.Response?> get({required String url}) async {
     try {
-      final response = await http.get(Uri.parse(url), headers: getHeaders());
+      final response = await _sendRequest(method: 'GET', url: url);
 
       // 200–299: success, 400–499: client error (do not save)
       if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -75,15 +310,10 @@ class HttpUtil {
   static Future<http.Response?> post({
     required String url,
     required Map<String, dynamic> body,
+    bool queueOnFailure = true,
   }) async {
-    var finalHeaders = getHeaders();
-
     try {
-      final response = await http.post(
-        Uri.parse(url),
-        headers: finalHeaders,
-        body: jsonEncode(body),
-      );
+      final response = await _sendRequest(method: 'POST', url: url, body: body);
       // 200–299: success, 400–499: client error (do not save)
       if ((response.statusCode >= 200 && response.statusCode < 300) ||
           (response.statusCode >= 400 && response.statusCode < 500)) {
@@ -91,11 +321,15 @@ class HttpUtil {
       }
 
       // Other errors: save request
-      await _saveFailedRequest(url, finalHeaders, body);
+      if (queueOnFailure) {
+        await _saveFailedRequest(url, body, method: 'POST');
+      }
       return null;
     } catch (e) {
       // Network or other exceptions: save request
-      await _saveFailedRequest(url, finalHeaders, body);
+      if (queueOnFailure) {
+        await _saveFailedRequest(url, body, method: 'POST');
+      }
       return null;
     }
   }
@@ -105,14 +339,8 @@ class HttpUtil {
     required String url,
     required Map<String, dynamic> body,
   }) async {
-    var finalHeaders = getHeaders();
-
     try {
-      final response = await http.put(
-        Uri.parse(url),
-        headers: finalHeaders,
-        body: jsonEncode(body),
-      );
+      final response = await _sendRequest(method: 'PUT', url: url, body: body);
 
       // 200–299: success, 400–499: client error (do not save)
       if ((response.statusCode >= 200 && response.statusCode < 300) ||
@@ -121,11 +349,11 @@ class HttpUtil {
       }
 
       // Other errors: save request
-      await _saveFailedRequest(url, finalHeaders, body);
+      await _saveFailedRequest(url, body, method: 'PUT');
       return null;
     } catch (e) {
       // Network or other exceptions: save request
-      await _saveFailedRequest(url, finalHeaders, body);
+      await _saveFailedRequest(url, body, method: 'PUT');
       return null;
     }
   }
@@ -133,17 +361,18 @@ class HttpUtil {
   /// Save failed request to Hive
   static Future<void> _saveFailedRequest(
     String url,
-    Map<String, String> headers,
-    Map<String, dynamic> body,
-  ) async {
+    Map<String, dynamic> body, {
+    required String method,
+  }) async {
     final box = _box;
     if (box == null || !box.isOpen) return;
 
     final request = FailedRequest(
       url: url,
-      headers: headers,
+      headers: const {},
       body: body,
       retryCount: 0,
+      method: method,
     );
     await box.add(request);
   }
@@ -161,10 +390,10 @@ class HttpUtil {
         if (request == null) continue;
 
         try {
-          final response = await http.post(
-            Uri.parse(request.url),
-            headers: request.headers,
-            body: jsonEncode(request.body),
+          final response = await _sendRequest(
+            method: request.method,
+            url: request.url,
+            body: request.body,
           );
 
           if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -177,12 +406,13 @@ class HttpUtil {
           request.retryCount += 1;
           await request.save();
         } finally {
-          // Exponential backoff with cap
           final delaySeconds = min(
             pow(2, request.retryCount).toInt(),
             _maxBackoffSeconds,
           );
-          await Future.delayed(Duration(seconds: delaySeconds));
+          if (request.retryCount > 0) {
+            await Future.delayed(Duration(seconds: delaySeconds));
+          }
         }
       }
     } finally {

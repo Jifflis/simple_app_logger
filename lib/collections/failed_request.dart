@@ -16,10 +16,14 @@ class FailedRequest extends HiveObject {
   @HiveField(3)
   int retryCount;
 
+  @HiveField(4)
+  String method;
+
   FailedRequest({
     required this.url,
     required this.headers,
     required this.body,
     this.retryCount = 0,
+    this.method = 'POST',
   });
 }
