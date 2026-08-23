@@ -80,6 +80,19 @@ continue in the background, so an offline application can begin capturing logs
 immediately. Calls made before `SimpleAppLogger.init()` completes are safely
 ignored.
 
+## Example application
+
+A complete cross-platform sample is available in the [`example`](example/)
+directory. Run it with:
+
+```bash
+cd example
+flutter run --dart-define=APP_LOGGER_API_KEY=your-project-api-key
+```
+
+The sample provides controls for every public SDK operation and can be used to
+observe batching and offline recovery interactively.
+
 ## Configuration
 
 ```dart
