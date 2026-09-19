@@ -14,8 +14,11 @@ import 'package:simple_app_logger/util/uuid_util.dart';
 class SimpleAppLogger {
   SimpleAppLogger._();
 
+  // static const String _apiBaseUrl =
+  //     'http://127.0.0.1:5001'; //token alk_d78415cc_frnGe72CsJH_Ww5NFwPtQUmoYsWDxCUtPzjfdGwybOE
+
   static const String _apiBaseUrl =
-      'http://127.0.0.1:5001'; //token alk_d78415cc_frnGe72CsJH_Ww5NFwPtQUmoYsWDxCUtPzjfdGwybOE
+      'https://api.app-logger.com';
 
   static late String apiKey;
 
