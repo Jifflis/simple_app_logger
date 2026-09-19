@@ -1,0 +1,3 @@
+# ninja log v5
+0	302	1787460762301571496	CMakeFiles/simple_app_logger_crash.dir/native_crash_handler.cpp.o	43b3ef93fce3493c
+303	341	1787460762341400223	/Users/jeffreyabaniel/Documents/GitHub/simple_app_logger/example/build/simple_app_logger/intermediates/cxx/Debug/3p6j6b66/obj/arm64-v8a/libsimple_app_logger_crash.so	188c72a9c9185594

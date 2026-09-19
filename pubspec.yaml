@@ -41,6 +41,19 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.idmakers.simple_app_logger
+        pluginClass: SimpleAppLoggerPlugin
+      ios:
+        pluginClass: SimpleAppLoggerPlugin
+      macos:
+        pluginClass: SimpleAppLoggerPlugin
+      linux:
+        pluginClass: SimpleAppLoggerPlugin
+      windows:
+        pluginClass: SimpleAppLoggerPluginCApi
 
   # To add assets to your package, add an assets section, like this:
   # assets:

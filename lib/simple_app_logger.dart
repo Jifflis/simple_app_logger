@@ -5,6 +5,8 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:simple_app_logger/service/installation_auth.dart';
+import 'package:simple_app_logger/service/crash_journal.dart';
+import 'package:simple_app_logger/service/native_crash_bridge.dart';
 import 'package:simple_app_logger/service/http_util.dart';
 import 'package:simple_app_logger/util/date_util.dart';
 import 'package:simple_app_logger/util/device_info.dart';
@@ -29,6 +31,7 @@ class SimpleAppLogger {
   static bool Function(Object error, StackTrace stack)?
   _previousPlatformErrorHandler;
   static bool _capturesUnhandledErrors = false;
+  static CrashJournal? _crashJournal;
 
   static String _endpoint(String path) {
     final normalizedPath = path.startsWith('/') ? path : '/$path';
@@ -56,9 +59,15 @@ class SimpleAppLogger {
     String? appVersion,
     bool useInstallationAuth = true,
     bool captureUnhandledError = false,
+    bool captureNativeCrashes = false,
     void Function(String message)? apiLog,
   }) async {
     await PrefsUtil.init();
+    try {
+      _crashJournal = await CrashJournal.create();
+    } catch (_) {
+      _crashJournal = null;
+    }
     apiKey = key;
 
     final resolvedAppVersion =
@@ -93,6 +102,8 @@ class SimpleAppLogger {
       onLogDeviceMissing: () => _deviceInitialized = false,
       apiLog: apiLog,
     );
+    await _recoverCrashJournal();
+    await _recoverNativeCrashes(captureNativeCrashes);
     isInit = true;
     _deviceInitialized = false;
     _configureUnhandledErrorCapture(captureUnhandledError);
@@ -261,7 +272,17 @@ class SimpleAppLogger {
     Object error,
     StackTrace stack, {
     String tag = 'zone_crash',
-  }) => _log('error', '$error\n$stack', tag: tag);
+  }) {
+    final record = {
+      'id': UUIDGenerator.instance.generate(),
+      'actual_log_time': DateUtil.getDateNowInUTC(),
+      'message': '$error\n$stack',
+      'level': 'error',
+      'tag': tag,
+    };
+    _crashJournal?.writeSync(record);
+    return _enqueuePreparedLog(record);
+  }
 
   static Future<void> warning(String message, {String tag = ''}) =>
       _log('warning', message, tag: tag);
@@ -279,7 +300,70 @@ class SimpleAppLogger {
     await _connectivitySubscription?.cancel();
     _connectivitySubscription = null;
     await HttpUtil.dispose();
+    _crashJournal = null;
     isInit = false;
+  }
+
+  static Future<void> _recoverCrashJournal() async {
+    final journal = _crashJournal;
+    if (journal == null) return;
+    final records = await journal.read();
+    if (records.isEmpty) return;
+
+    for (final record in records) {
+      await _enqueuePreparedLog(record, allowBeforeInitialization: true);
+    }
+    await journal.clear();
+  }
+
+  static Future<void> _recoverNativeCrashes(bool enabled) async {
+    final reports = await NativeCrashBridge.configureAndRecover(
+      enabled: enabled,
+    );
+    final journal = _crashJournal;
+    if (reports.isEmpty || journal == null) return;
+    var persistedAll = true;
+    for (var index = 0; index < reports.length; index++) {
+      final report = reports[index];
+      final message = report['message']?.toString() ?? 'Native process crash';
+      final stack = report['stack_trace']?.toString();
+      final record = {
+        'id': report['id']?.toString() ?? _nativeReportId(report, index),
+        'actual_log_time':
+            report['actual_log_time']?.toString() ?? DateUtil.getDateNowInUTC(),
+        'message': stack == null || stack.isEmpty
+            ? message
+            : '$message\n$stack',
+        'level': 'error',
+        'tag': report['tag']?.toString() ?? 'native_crash',
+      };
+      persistedAll = journal.writeSync(record) && persistedAll;
+    }
+    if (!persistedAll) return;
+    await NativeCrashBridge.acknowledgeRecovered();
+    await _recoverCrashJournal();
+  }
+
+  static String _nativeReportId(Map<String, dynamic> report, int index) {
+    final value =
+        '${report['tag']}|${report['message']}|'
+        '${report['stack_trace']}|$index';
+    var hash = 0xcbf29ce484222325;
+    for (final unit in value.codeUnits) {
+      hash ^= unit;
+      hash = (hash * 0x100000001b3) & 0x7fffffffffffffff;
+    }
+    return 'native-${hash.toRadixString(16)}';
+  }
+
+  static Future<void> _enqueuePreparedLog(
+    Map<String, dynamic> record, {
+    bool allowBeforeInitialization = false,
+  }) async {
+    if (!isInit && !allowBeforeInitialization) return;
+    final body = Map<String, dynamic>.from(record);
+    body['instance_id'] = getInstanceId();
+    await HttpUtil.enqueueLog(url: _endpoint('/api/logs/batch'), body: body);
   }
 
   static void _configureUnhandledErrorCapture(bool enabled) {

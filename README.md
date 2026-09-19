@@ -104,6 +104,7 @@ await SimpleAppLogger.init(
   appVersion: '2.4.1',
   useInstallationAuth: true,
   captureUnhandledError: true,
+  captureNativeCrashes: true,
 );
 ```
 
@@ -116,6 +117,7 @@ await SimpleAppLogger.init(
 | `appVersion` | Detected automatically | Version used for installation registration and `X-App-Version`. |
 | `useInstallationAuth` | `true` | Enables installation tokens on supported platforms. |
 | `captureUnhandledError` | `false` | Captures unhandled Flutter and root-isolate errors. |
+| `captureNativeCrashes` | `false` | Installs native exception and fatal-signal handlers on supported native platforms. |
 
 Set `appVersion` explicitly when tests, custom build systems, or the backend
 version allowlist require a specific value. Valid backend versions contain
@@ -176,8 +178,35 @@ void main() {
 ```
 
 The SDK forwards errors to handlers that were installed before initialization.
-Native process crashes and forced termination cannot be captured reliably by
-Dart error handlers.
+Before normal asynchronous queuing, it also writes a minimal record to a
+bounded synchronous emergency journal on filesystem platforms. On the next
+launch, journal records are moved into the persistent batch queue with their
+original event IDs and uploaded after authentication. Partial records from an
+interrupted write are ignored safely.
+
+This journal improves delivery for abrupt Dart and Flutter failures. Native
+capture can be enabled separately:
+
+```dart
+await SimpleAppLogger.init(
+  key: 'your-project-api-key',
+  captureUnhandledError: true,
+  captureNativeCrashes: true,
+);
+```
+
+Native reports are written by platform handlers, recovered on the next launch,
+and uploaded with the `native_crash` tag through the normal authenticated batch
+pipeline. Android captures JVM exceptions and common NDK fatal signals. Apple
+platforms capture uncaught Objective-C exceptions and common fatal signals.
+Linux captures common fatal signals, and Windows captures unhandled structured
+exceptions. Previous handlers are restored or forwarded where the platform
+allows it.
+
+No in-process SDK can reliably report out-of-memory kills, power loss, or an OS
+force-kill. The native handlers intentionally collect minimal metadata; native
+symbolication and minidump attachment upload require a separate backend symbol
+and artifact pipeline.
 
 ## Batching and offline behavior
 

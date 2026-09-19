@@ -1,0 +1,3 @@
+/Users/jeffreyabaniel/Documents/GitHub/simple_app_logger/android/.cxx/Debug/3p6j6b66/arm64-v8a/CMakeFiles/simple_app_logger_crash.dir
+/Users/jeffreyabaniel/Documents/GitHub/simple_app_logger/android/.cxx/Debug/3p6j6b66/arm64-v8a/CMakeFiles/edit_cache.dir
+/Users/jeffreyabaniel/Documents/GitHub/simple_app_logger/android/.cxx/Debug/3p6j6b66/arm64-v8a/CMakeFiles/rebuild_cache.dir

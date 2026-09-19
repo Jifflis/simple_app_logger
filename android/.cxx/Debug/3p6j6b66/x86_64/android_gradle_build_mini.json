@@ -1,0 +1,27 @@
+{
+  "buildFiles": [
+    "/Users/jeffreyabaniel/Documents/GitHub/simple_app_logger/android/src/main/cpp/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/Users/jeffreyabaniel/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Users/jeffreyabaniel/Documents/GitHub/simple_app_logger/android/.cxx/Debug/3p6j6b66/x86_64",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/Users/jeffreyabaniel/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Users/jeffreyabaniel/Documents/GitHub/simple_app_logger/android/.cxx/Debug/3p6j6b66/x86_64",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "simple_app_logger_crash::@6890427a1f51a3e7e1df": {
+      "artifactName": "simple_app_logger_crash",
+      "abi": "x86_64",
+      "output": "/Users/jeffreyabaniel/Documents/GitHub/simple_app_logger/example/build/simple_app_logger/intermediates/cxx/Debug/3p6j6b66/obj/x86_64/libsimple_app_logger_crash.so",
+      "runtimeFiles": []
+    }
+  }
+}

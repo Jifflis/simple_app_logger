@@ -1,0 +1,5 @@
+cmake_minimum_required(VERSION 3.18.1)
+project(simple_app_logger_crash)
+add_library(simple_app_logger_crash SHARED native_crash_handler.cpp)
+find_library(log-lib log)
+target_link_libraries(simple_app_logger_crash ${log-lib})

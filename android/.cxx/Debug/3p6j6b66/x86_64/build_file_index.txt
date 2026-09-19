@@ -1,0 +1,1 @@
+/Users/jeffreyabaniel/Documents/GitHub/simple_app_logger/android/src/main/cpp/CMakeLists.txt
