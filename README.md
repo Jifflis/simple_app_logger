@@ -80,6 +80,11 @@ continue in the background, so an offline application can begin capturing logs
 immediately. Calls made before `SimpleAppLogger.init()` completes are safely
 ignored.
 
+When the first queued log is delivered, the logger registers the device with
+its platform model, application version, and device/OS version. The application
+version comes from `package_info_plus` unless `appVersion` is supplied to
+`SimpleAppLogger.init()`.
+
 ## Example application
 
 A complete cross-platform sample is available in the [`example`](example/)

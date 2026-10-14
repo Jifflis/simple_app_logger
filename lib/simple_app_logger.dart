@@ -17,8 +17,7 @@ class SimpleAppLogger {
   // static const String _apiBaseUrl =
   //     'http://127.0.0.1:5001'; //token alk_d78415cc_frnGe72CsJH_Ww5NFwPtQUmoYsWDxCUtPzjfdGwybOE
 
-  static const String _apiBaseUrl =
-      'https://api.app-logger.com';
+  static const String _apiBaseUrl = 'https://api.app-logger.com';
 
   static late String apiKey;
 
@@ -132,6 +131,7 @@ class SimpleAppLogger {
 
       String deviceName = await DeviceHelper.getDeviceName();
       String deviceModel = await DeviceHelper.getDeviceModel();
+      String? deviceVersion = await DeviceHelper.getDeviceVersion();
       String actualDate = DateUtil.getDateNowInUTC();
       String platform = _getPlatform();
 
@@ -145,6 +145,7 @@ class SimpleAppLogger {
           'platform': platform,
           'device_id': deviceId,
           'app_version': _appVersion,
+          'device_version': deviceVersion,
         },
         queueOnFailure: false,
       );

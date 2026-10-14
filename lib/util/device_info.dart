@@ -2,7 +2,12 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 
 class DeviceHelper {
-  static final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
+  static DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
+
+  @visibleForTesting
+  static void setDeviceInfoPlugin(DeviceInfoPlugin deviceInfo) {
+    _deviceInfo = deviceInfo;
+  }
 
   /// Returns a unique device ID depending on the platform.
   static Future<String?> getDeviceId() async {
@@ -84,5 +89,58 @@ class DeviceHelper {
     } else {
       return 'Unknown Device';
     }
+  }
+
+  /// Returns a user-facing operating system or browser version.
+  static Future<String?> getDeviceVersion() async {
+    try {
+      if (kIsWeb) {
+        final info = await _deviceInfo.webBrowserInfo;
+        return _nonEmpty(info.appVersion) ?? _nonEmpty(info.userAgent);
+      }
+
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final info = await _deviceInfo.androidInfo;
+        return _withPlatform('Android', info.version.release);
+      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+        final info = await _deviceInfo.iosInfo;
+        return _withPlatform('iOS', info.systemVersion);
+      } else if (defaultTargetPlatform == TargetPlatform.macOS) {
+        final info = await _deviceInfo.macOsInfo;
+        return 'macOS ${info.majorVersion}.${info.minorVersion}.${info.patchVersion}';
+      } else if (defaultTargetPlatform == TargetPlatform.windows) {
+        final info = await _deviceInfo.windowsInfo;
+        final productName = _nonEmpty(info.productName);
+        final displayVersion = _nonEmpty(info.displayVersion);
+        if (productName != null && displayVersion != null) {
+          return '$productName $displayVersion';
+        }
+        return productName ??
+            displayVersion ??
+            'Windows ${info.majorVersion}.${info.minorVersion}.${info.buildNumber}';
+      } else if (defaultTargetPlatform == TargetPlatform.linux) {
+        final info = await _deviceInfo.linuxInfo;
+        return _nonEmpty(info.prettyName) ??
+            _withPlatform(info.name, info.versionId ?? info.version);
+      }
+
+      return null;
+    } catch (error) {
+      debugPrint('Error getting device version: $error');
+      return null;
+    }
+  }
+
+  static String? _nonEmpty(String? value) {
+    final normalized = value?.trim();
+    return normalized == null || normalized.isEmpty ? null : normalized;
+  }
+
+  static String? _withPlatform(String platform, String? version) {
+    final normalizedPlatform = _nonEmpty(platform);
+    final normalizedVersion = _nonEmpty(version);
+    if (normalizedPlatform == null) return normalizedVersion;
+    if (normalizedVersion == null) return normalizedPlatform;
+    return '$normalizedPlatform $normalizedVersion';
   }
 }
