@@ -107,7 +107,6 @@ await SimpleAppLogger.init(
   batchSize: 25,
   flushInterval: const Duration(seconds: 5),
   maxQueuedLogs: 1000,
-  appVersion: '2.4.1',
   useInstallationAuth: true,
   captureUnhandledError: true,
 );
@@ -126,6 +125,8 @@ await SimpleAppLogger.init(
 Set `appVersion` explicitly when tests, custom build systems, or the backend
 version allowlist require a specific value. Valid backend versions contain
 letters, numbers, `.`, `_`, `+`, or `-` and are at most 50 characters.
+When overriding a release version, include its build number explicitly, such
+as `appVersion: '2.4.1+38'`.
 
 ## Logging
 
