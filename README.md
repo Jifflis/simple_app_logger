@@ -82,7 +82,8 @@ ignored.
 
 When the first queued log is delivered, the logger registers the device with
 its platform model, application version, and device/OS version. The application
-version comes from `package_info_plus` unless `appVersion` is supplied to
+version comes from `package_info_plus` and includes the build number when one is
+available (for example, `2.4.1+38`) unless `appVersion` is supplied to
 `SimpleAppLogger.init()`.
 
 ## Example application
@@ -118,7 +119,7 @@ await SimpleAppLogger.init(
 | `batchSize` | `25` | Logs per request. Must be between 1 and 50. |
 | `flushInterval` | 5 seconds | Maximum delay before a non-empty log queue is flushed. |
 | `maxQueuedLogs` | `1000` | Maximum locally queued logs. Must be at least `batchSize`. |
-| `appVersion` | Detected automatically | Version used for installation registration and `X-App-Version`. |
+| `appVersion` | Detected automatically | Version and build number used for installation registration and `X-App-Version`. |
 | `useInstallationAuth` | `true` | Enables installation tokens on supported platforms. |
 | `captureUnhandledError` | `false` | Captures unhandled Flutter and root-isolate errors. |
 

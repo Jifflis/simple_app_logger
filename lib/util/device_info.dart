@@ -1,12 +1,26 @@
+import 'package:android_id/android_id.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 
 class DeviceHelper {
   static DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
+  static Future<String?> Function() _androidIdProvider = _readAndroidId;
+
+  static Future<String?> _readAndroidId() => const AndroidId().getId();
 
   @visibleForTesting
   static void setDeviceInfoPlugin(DeviceInfoPlugin deviceInfo) {
     _deviceInfo = deviceInfo;
+  }
+
+  @visibleForTesting
+  static void setAndroidIdProvider(Future<String?> Function() provider) {
+    _androidIdProvider = provider;
+  }
+
+  @visibleForTesting
+  static void resetAndroidIdProvider() {
+    _androidIdProvider = _readAndroidId;
   }
 
   /// Returns a unique device ID depending on the platform.
@@ -19,8 +33,7 @@ class DeviceHelper {
       }
 
       if (defaultTargetPlatform == TargetPlatform.android) {
-        final androidInfo = await _deviceInfo.androidInfo;
-        return androidInfo.id;
+        return _nonEmpty(await _androidIdProvider());
       } else if (defaultTargetPlatform == TargetPlatform.iOS) {
         final iosInfo = await _deviceInfo.iosInfo;
         return iosInfo.identifierForVendor;
@@ -34,12 +47,25 @@ class DeviceHelper {
         final linuxInfo = await _deviceInfo.linuxInfo;
         return linuxInfo.machineId;
       } else {
-        return 'unknown-platform';
+        return null;
       }
     } catch (e) {
       debugPrint('Error getting device ID: $e');
       return null;
     }
+  }
+
+  static String? getDeviceIdKind() {
+    if (kIsWeb) return null;
+
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.android => 'android_id',
+      TargetPlatform.iOS => 'identifier_for_vendor',
+      TargetPlatform.macOS => 'system_guid',
+      TargetPlatform.windows => 'windows_device_id',
+      TargetPlatform.linux => 'machine_id',
+      TargetPlatform.fuchsia => null,
+    };
   }
 
   static Future<String> getDeviceName() async {

@@ -8,6 +8,7 @@ import 'package:simple_app_logger/service/installation_auth.dart';
 import 'package:simple_app_logger/service/http_util.dart';
 import 'package:simple_app_logger/util/date_util.dart';
 import 'package:simple_app_logger/util/device_info.dart';
+import 'package:simple_app_logger/util/package_version.dart';
 import 'package:simple_app_logger/util/prefs.dart';
 import 'package:simple_app_logger/util/uuid_util.dart';
 
@@ -64,7 +65,7 @@ class SimpleAppLogger {
     apiKey = key;
 
     final resolvedAppVersion =
-        appVersion ?? (await PackageInfo.fromPlatform()).version;
+        appVersion ?? formatPackageVersion(await PackageInfo.fromPlatform());
     _appVersion = resolvedAppVersion;
     final platform = _getPlatform().toLowerCase();
     final supportsInstallationAuth =
@@ -126,7 +127,10 @@ class SimpleAppLogger {
       await HttpUtil.ensureAuthenticated();
       if (_deviceInitialized) return true;
 
-      String deviceId = await DeviceHelper.getDeviceId() ?? 'unknown';
+      final deviceId = await DeviceHelper.getDeviceId();
+      final deviceIdKind = deviceId == null
+          ? null
+          : DeviceHelper.getDeviceIdKind();
       String instanceId = getInstanceId();
 
       String deviceName = await DeviceHelper.getDeviceName();
@@ -144,6 +148,7 @@ class SimpleAppLogger {
           'model': deviceModel,
           'platform': platform,
           'device_id': deviceId,
+          'device_id_kind': deviceIdKind,
           'app_version': _appVersion,
           'device_version': deviceVersion,
         },

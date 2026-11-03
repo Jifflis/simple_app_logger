@@ -1,6 +1,6 @@
 name: simple_app_logger
 description: Durable, batched application logging with offline delivery and installation authentication for Flutter.
-version: 0.0.1
+version: 0.0.2
 homepage: https://github.com/Jifflis/simple_app_logger
 repository: https://github.com/Jifflis/simple_app_logger
 
@@ -20,6 +20,7 @@ dependencies:
   flutter:
     sdk: flutter
   connectivity_plus: ^7.0.0
+  android_id: ^0.4.0
   device_info_plus: ^11.5.0
   uuid: ^4.5.1
   shared_preferences: ^2.5.3

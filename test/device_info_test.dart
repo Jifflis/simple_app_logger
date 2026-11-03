@@ -7,10 +7,12 @@ void main() {
   tearDown(() {
     debugDefaultTargetPlatformOverride = null;
     DeviceHelper.setDeviceInfoPlugin(DeviceInfoPlugin());
+    DeviceHelper.resetAndroidIdProvider();
   });
 
   test('reports the Android model and OS version', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    DeviceHelper.setAndroidIdProvider(() async => 'android-secure-id');
     DeviceHelper.setDeviceInfoPlugin(
       DeviceInfoPlugin.setMockInitialValues(
         androidDeviceInfo: AndroidDeviceInfo.fromMap({
@@ -55,6 +57,15 @@ void main() {
 
     expect(await DeviceHelper.getDeviceModel(), 'Pixel 9 Pro');
     expect(await DeviceHelper.getDeviceVersion(), 'Android 15');
+    expect(await DeviceHelper.getDeviceId(), 'android-secure-id');
+    expect(DeviceHelper.getDeviceIdKind(), 'android_id');
+  });
+
+  test('does not substitute a shared placeholder for a missing ID', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    DeviceHelper.setAndroidIdProvider(() async => null);
+
+    expect(await DeviceHelper.getDeviceId(), isNull);
   });
 
   test('reports the iOS hardware identifier and OS version', () async {
